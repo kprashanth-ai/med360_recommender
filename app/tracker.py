@@ -5,7 +5,8 @@ calculates cost from a pricing table, and appends to logs/usage.json.
 """
 
 import json
-import os
+import tempfile
+from threading import Lock
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -26,12 +27,13 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
 }
 
 LOG_PATH = Path(__file__).parent.parent / "logs" / "usage.json"
+LOG_WRITE_LOCK = Lock()
 
 
 def _load_log() -> list:
     if LOG_PATH.exists():
         try:
-            return json.loads(LOG_PATH.read_text())
+            return json.loads(LOG_PATH.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return []
     return []
@@ -39,7 +41,15 @@ def _load_log() -> list:
 
 def _save_log(entries: list) -> None:
     LOG_PATH.parent.mkdir(exist_ok=True)
-    LOG_PATH.write_text(json.dumps(entries, indent=2))
+    with tempfile.NamedTemporaryFile(
+        "w",
+        delete=False,
+        dir=LOG_PATH.parent,
+        encoding="utf-8",
+    ) as temp_file:
+        json.dump(entries, temp_file, indent=2)
+        temp_path = Path(temp_file.name)
+    temp_path.replace(LOG_PATH)
 
 
 def calculate_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
@@ -113,9 +123,10 @@ def record_usage(
         "cost_usd":          round(cost, 8),
         "rate_limits":       rate_limits,
     }
-    entries = _load_log()
-    entries.append(entry)
-    _save_log(entries)
+    with LOG_WRITE_LOCK:
+        entries = _load_log()
+        entries.append(entry)
+        _save_log(entries)
     return entry
 
 

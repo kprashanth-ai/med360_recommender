@@ -1,4 +1,4 @@
-from app.services.llm import get_recommendation, build_patient_info
+from app.services.llm import build_patient_info, get_recommendation
 from app.tracker import get_session_totals
 
 
@@ -42,26 +42,30 @@ def main():
     tok = rl.get("tokens", {})
 
     print(f"Model              : {model_used}")
-    print(f"Tokens this call   : {usage_entry.get('total_tokens')} "
-          f"(prompt: {usage_entry.get('prompt_tokens')}, "
-          f"completion: {usage_entry.get('completion_tokens')})")
+    print(
+        f"Tokens this call   : {usage_entry.get('total_tokens')} "
+        f"(prompt: {usage_entry.get('prompt_tokens')}, "
+        f"completion: {usage_entry.get('completion_tokens')})"
+    )
     print(f"Cost this call     : ${usage_entry.get('cost_usd', 0):.6f}")
 
     if req.get("remaining") is not None:
-        reset_str = f"  — resets {req['reset']}" if req.get("reset") else ""
+        reset_str = f"  - resets {req['reset']}" if req.get("reset") else ""
         print(f"Requests today     : {req['remaining']} / {req['limit']} remaining{reset_str}")
     else:
         print("Requests today     : not reported by provider for this model")
 
     if tok.get("remaining") is not None:
-        reset_str = f"  — resets {tok['reset']}" if tok.get("reset") else ""
+        reset_str = f"  - resets {tok['reset']}" if tok.get("reset") else ""
         print(f"Tokens today       : {tok['remaining']} / {tok['limit']} remaining{reset_str}")
     else:
         print("Tokens today       : not reported by provider for this model")
 
     totals = get_session_totals()
-    print(f"\nSession totals     : {totals['total_requests']} requests | "
-          f"{totals['total_tokens']} tokens | ${totals['total_cost_usd']:.6f}")
+    print(
+        f"\nSession totals     : {totals['total_requests']} requests | "
+        f"{totals['total_tokens']} tokens | ${totals['total_cost_usd']:.6f}"
+    )
 
 
 if __name__ == "__main__":

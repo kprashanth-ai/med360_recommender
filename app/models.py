@@ -27,6 +27,15 @@ class SpecialistPathwayItem(BaseModel):
     reason: str
 
 
+class LLMRecommendationPayload(BaseModel):
+    recommended_specialist: str = "General Physician"
+    primary_recommendation_summary: str = ""
+    symptom_explanation: str = ""
+    specialist_pathway: list[SpecialistPathwayItem] = Field(default_factory=list)
+    red_flags: list[str] = Field(default_factory=list)
+    disclaimer: str = ""
+
+
 class RateLimitQuota(BaseModel):
     limit: int | None
     remaining: int | None

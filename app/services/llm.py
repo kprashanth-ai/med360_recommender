@@ -1,7 +1,19 @@
 import json
-from openai import OpenAI, RateLimitError, NotFoundError, APIError
+
+from openai import (
+    APIConnectionError,
+    APIError,
+    APITimeoutError,
+    AuthenticationError,
+    BadRequestError,
+    NotFoundError,
+    OpenAI,
+    RateLimitError,
+)
+from pydantic import ValidationError
 
 from app.config import OPENROUTER_API_KEY, OPENROUTER_BASE_URL, FREE_MODEL_FALLBACKS
+from app.models import LLMRecommendationPayload
 from app.prompts import SYSTEM_PROMPT
 from app.tracker import parse_rate_limits, record_usage
 
@@ -11,6 +23,12 @@ client = OpenAI(
 )
 
 
+def _normalize_recommendation_payload(raw_content: str) -> dict:
+    payload = json.loads(raw_content)
+    validated = LLMRecommendationPayload.model_validate(payload)
+    return validated.model_dump()
+
+
 def get_recommendation(patient_info: str) -> tuple[dict, str, dict]:
     """
     Try each model in FREE_MODEL_FALLBACKS until one succeeds.
@@ -18,7 +36,9 @@ def get_recommendation(patient_info: str) -> tuple[dict, str, dict]:
     Raises RuntimeError with per-model failure reasons if all fail.
     """
     if not OPENROUTER_API_KEY:
-        raise RuntimeError("OPENROUTER_API_KEY is not configured. Add it to your environment before calling /recommend.")
+        raise RuntimeError(
+            "OPENROUTER_API_KEY is not configured. Add it to your environment before calling /recommend."
+        )
 
     failures: list[str] = []
 
@@ -45,20 +65,33 @@ def get_recommendation(patient_info: str) -> tuple[dict, str, dict]:
                 rate_limits=rate_limits,
             )
 
-            data = json.loads(response.choices[0].message.content)
+            message_content = response.choices[0].message.content or "{}"
+            data = _normalize_recommendation_payload(message_content)
             return data, model, usage_entry
 
         except RateLimitError:
-            failures.append(f"{model} → rate limited")
+            failures.append(f"{model} -> rate limited")
             continue
         except NotFoundError:
-            failures.append(f"{model} → not found / unavailable")
+            failures.append(f"{model} -> not found / unavailable")
+            continue
+        except (APIConnectionError, APITimeoutError):
+            failures.append(f"{model} -> connection or timeout error")
+            continue
+        except AuthenticationError:
+            failures.append(f"{model} -> authentication failed")
+            continue
+        except BadRequestError as e:
+            failures.append(f"{model} -> bad request ({e.status_code})")
             continue
         except APIError as e:
-            failures.append(f"{model} → API error ({e.status_code})")
+            failures.append(f"{model} -> API error ({e.status_code})")
             continue
-        except json.JSONDecodeError:
-            failures.append(f"{model} → bad JSON in response")
+        except (json.JSONDecodeError, ValidationError):
+            failures.append(f"{model} -> invalid structured response")
+            continue
+        except Exception as e:
+            failures.append(f"{model} -> unexpected error ({type(e).__name__})")
             continue
 
     attempted = "\n  ".join(failures)

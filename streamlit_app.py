@@ -1,9 +1,10 @@
 import streamlit as st
-from app.services.llm import get_recommendation, build_patient_info
+
+from app.services.llm import build_patient_info, get_recommendation
 from app.tracker import get_session_totals
 
-st.set_page_config(page_title="Specialist Recommender", page_icon="🏥")
-st.title("🏥 Specialist Recommender")
+st.set_page_config(page_title="Specialist Recommender", page_icon="Hospital")
+st.title("Specialist Recommender")
 st.caption("AI-assisted triage for consultation booking only.")
 
 with st.form("patient_form"):
@@ -41,15 +42,14 @@ if submitted:
         for item in data.get("specialist_pathway", []):
             st.markdown(f"- **{item.get('specialist')}**: {item.get('reason')}")
 
-        st.subheader("Red Flags — Seek Immediate Care If:")
+        st.subheader("Red Flags - Seek Immediate Care If:")
         for flag in data.get("red_flags", []):
             st.markdown(f"- {flag}")
 
         st.warning(data.get("disclaimer"))
 
-        # --- Usage panel ---
         with st.expander("Usage & Cost", expanded=True):
-            rl  = usage_entry.get("rate_limits", {})
+            rl = usage_entry.get("rate_limits", {})
             req = rl.get("requests", {})
             tok = rl.get("tokens", {})
 
@@ -60,16 +60,22 @@ if submitted:
 
             if req.get("remaining") is not None:
                 pct = int(req["remaining"] / req["limit"] * 100) if req.get("limit") else 0
-                st.progress(pct / 100, text=f"Requests today: **{req['remaining']} / {req['limit']}** remaining"
-                            + (f"  |  Resets: {req['reset']}" if req.get("reset") else ""))
+                st.progress(
+                    pct / 100,
+                    text=f"Requests today: **{req['remaining']} / {req['limit']}** remaining"
+                    + (f"  |  Resets: {req['reset']}" if req.get("reset") else ""),
+                )
             if tok.get("remaining") is not None:
                 pct = int(tok["remaining"] / tok["limit"] * 100) if tok.get("limit") else 0
-                st.progress(pct / 100, text=f"Tokens today: **{tok['remaining']} / {tok['limit']}** remaining"
-                            + (f"  |  Resets: {tok['reset']}" if tok.get("reset") else ""))
+                st.progress(
+                    pct / 100,
+                    text=f"Tokens today: **{tok['remaining']} / {tok['limit']}** remaining"
+                    + (f"  |  Resets: {tok['reset']}" if tok.get("reset") else ""),
+                )
 
         totals = get_session_totals()
         st.caption(
-            f"Session totals — {totals['total_requests']} requests | "
+            f"Session totals - {totals['total_requests']} requests | "
             f"{totals['total_tokens']} tokens | "
             f"${totals['total_cost_usd']:.6f}"
         )

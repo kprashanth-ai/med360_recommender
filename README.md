@@ -1,49 +1,154 @@
 # Specialist Recommender API
 
-This repository started as a symptom-to-specialist recommendation prototype with two thin clients:
+FastAPI service for symptom-based specialist recommendation.
 
-- `streamlit_app.py` for a quick UI demo
-- `specialist_recommender.py` for local CLI testing
+This repository contains:
 
-The reusable backend now lives in the `app/` package and is exposed as a FastAPI service for team integration.
+- a reusable FastAPI backend in `app/`
+- a Streamlit demo client in `streamlit_app.py`
+- a simple CLI demo client in `specialist_recommender.py`
+
+The main team integration target is the FastAPI app.
+
+## What This Service Does
+
+The API accepts basic patient symptom details, sends them to an LLM through OpenRouter, and returns:
+
+- one recommended specialist
+- a short patient-facing summary
+- a plain-language explanation
+- alternate specialist pathways
+- urgent red flags
+- token, cost, and rate-limit metadata
+
+This is an AI-assisted triage helper for consultation booking. It is not a medical diagnosis service.
+
+## Current Status
+
+This project is in a good state for local integration and internal team workflows.
+
+What is ready:
+
+- FastAPI app with documented routes
+- typed request and response models
+- configurable CORS
+- provider fallback handling across multiple models
+- response-shape validation for LLM output
+- local usage logging
+- Swagger docs at `/docs`
+
+What is not production-ready yet:
+
+- no authentication
+- no automated test suite yet
+- usage logging is local-file based, not centralized
+- no container setup yet
+- no mock mode for frontend work without a real API key
 
 ## Project Structure
 
 ```text
 recommender/
-├── app/
-│   ├── config.py            # environment-driven settings
-│   ├── constants.py         # specialist list and shared disclaimer
-│   ├── main.py              # FastAPI application entrypoint
-│   ├── models.py            # request/response schemas
-│   ├── prompts.py           # system prompt and JSON schema instructions
-│   ├── tracker.py           # token/cost logging
-│   └── services/
-│       └── llm.py           # OpenRouter/OpenAI call logic
-├── logs/                    # runtime usage log output
-├── specialist_recommender.py
-├── streamlit_app.py
-└── requirements.txt
+|-- app/
+|   |-- __init__.py
+|   |-- config.py
+|   |-- constants.py
+|   |-- main.py
+|   |-- models.py
+|   |-- prompts.py
+|   |-- tracker.py
+|   `-- services/
+|       |-- __init__.py
+|       `-- llm.py
+|-- logs/
+|-- .env.example
+|-- .gitignore
+|-- README.md
+|-- requirements.txt
+|-- specialist_recommender.py
+`-- streamlit_app.py
 ```
 
-## Current Flow
+## Architecture Overview
 
-1. The client sends patient details to `POST /recommend`.
-2. FastAPI validates the payload with Pydantic models.
-3. `app/services/llm.py` builds an LLM request using the shared prompt.
-4. The service tries the configured primary model and then fallback models.
-5. The response is parsed as JSON and normalized into the API response schema.
-6. Token usage, rate limits, and estimated cost are logged to `logs/usage.json`.
+### `app/main.py`
+
+FastAPI entrypoint. Exposes:
+
+- `GET /`
+- `GET /health`
+- `GET /usage`
+- `POST /recommend`
+
+### `app/models.py`
+
+Pydantic request and response contracts for the API plus internal validation of LLM output.
+
+### `app/services/llm.py`
+
+Provider integration layer. This is the only module that talks to OpenRouter/OpenAI-compatible APIs.
+
+Responsibilities:
+
+- send prompt to the provider
+- iterate over fallback models
+- validate the returned JSON shape
+- return normalized recommendation data
+
+### `app/prompts.py`
+
+System prompt and schema instructions sent to the model.
+
+### `app/tracker.py`
+
+Local usage tracker.
+
+Responsibilities:
+
+- parse rate-limit headers
+- estimate token costs
+- store request metadata in `logs/usage.json`
+- aggregate totals for `/usage`
+
+### `streamlit_app.py`
+
+Quick local demo UI. Useful for manual testing but not required for backend/frontend team integration.
+
+### `specialist_recommender.py`
+
+Simple terminal client for local manual checks.
+
+## Request Flow
+
+1. Client sends a payload to `POST /recommend`.
+2. FastAPI validates the payload using `PatientInput`.
+3. `build_patient_info(...)` converts the request into an LLM-friendly string.
+4. `app/services/llm.py` sends the prompt to OpenRouter.
+5. The service tries the configured primary model first, then fallback models if needed.
+6. The returned JSON is validated against the internal LLM payload model.
+7. The API converts the result into the public `RecommendationResponse`.
+8. Usage data is written to `logs/usage.json`.
 
 ## API Endpoints
 
 ### `GET /`
 
-Returns basic service metadata and useful URLs.
+Returns basic service metadata.
+
+Example response:
+
+```json
+{
+  "name": "Specialist Recommender API",
+  "version": "0.2.0",
+  "docs_url": "/docs",
+  "health_url": "/health"
+}
+```
 
 ### `GET /health`
 
-Health check for load balancers, backend orchestration, and frontend environment verification.
+Basic health check endpoint.
 
 Example response:
 
@@ -57,21 +162,23 @@ Example response:
 
 ### `GET /usage`
 
-Returns aggregated totals from `logs/usage.json`.
+Aggregated totals from local usage logs.
 
 Example response:
 
 ```json
 {
-  "total_requests": 8,
-  "total_tokens": 5621,
+  "total_requests": 3,
+  "total_tokens": 2818,
   "total_cost_usd": 0.0
 }
 ```
 
 ### `POST /recommend`
 
-Request:
+Primary integration endpoint.
+
+Request body:
 
 ```json
 {
@@ -83,33 +190,26 @@ Request:
 }
 ```
 
-Response:
+Response shape:
 
 ```json
 {
   "recommended_specialist": "Allergist/Immunologist",
-  "primary_recommendation_summary": "Your symptoms may be related to an allergic reaction pattern and should be assessed by a specialist.",
-  "symptom_explanation": "The combination of rash, itching, and hives after eating can suggest the body is reacting to a trigger.",
+  "primary_recommendation_summary": "Your symptoms may fit an allergy-related pattern and should be evaluated by a specialist.",
+  "symptom_explanation": "The combination of rash, itching, and hives after eating can indicate the body is reacting to a trigger.",
   "specialist_pathway": [
     {
       "specialist": "Allergist/Immunologist",
-      "reason": "Best fit for food-related allergy evaluation"
+      "reason": "Best fit for allergy evaluation"
     },
     {
       "specialist": "Dermatologist",
-      "reason": "Helpful if symptoms are primarily skin-focused"
-    },
-    {
-      "specialist": "General Physician",
-      "reason": "Useful first step if symptoms broaden or diagnosis is unclear"
+      "reason": "Useful if symptoms are mostly skin-focused"
     }
   ],
   "red_flags": [
     "difficulty breathing",
-    "swelling of the lips or tongue",
-    "fainting",
-    "rapid worsening rash",
-    "persistent vomiting"
+    "swelling of lips or tongue"
   ],
   "disclaimer": "This recommendation is an AI-assisted triage suggestion for consultation booking only. It is not a medical diagnosis or emergency advice. Please consult a qualified clinician for confirmation, and seek urgent care immediately for severe or worsening symptoms.",
   "usage": {
@@ -134,87 +234,146 @@ Response:
 }
 ```
 
-## Environment Setup
+## Environment Variables
 
-Create a `.env` file from `.env.example`.
+Create a `.env` file in the repo root based on `.env.example`.
 
-Required:
+### Required
 
 ```env
 OPENROUTER_API_KEY=your_key_here
 ```
 
-Optional:
+Without this key, `POST /recommend` will return a controlled error.
+
+### Optional
 
 ```env
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 OPENROUTER_MODEL=google/gemma-3n-e4b-it:free
 API_TITLE=Specialist Recommender API
 API_VERSION=0.2.0
+API_DESCRIPTION=AI-assisted triage API for specialist consultation booking.
 CORS_ALLOW_ORIGINS=*
 ```
 
-If the frontend team knows the deployed origins already, replace `*` with a comma-separated list such as:
+If the frontend is running separately, set `CORS_ALLOW_ORIGINS` explicitly. Example:
 
 ```env
-CORS_ALLOW_ORIGINS=http://localhost:3000,https://frontend.example.com
+CORS_ALLOW_ORIGINS=http://localhost:3000,https://your-frontend-domain.com
 ```
 
-## Run Locally
+## Local Setup
 
-Install dependencies:
+### 1. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Start the API:
+### 2. Create `.env`
+
+Copy `.env.example` and fill in your OpenRouter key.
+
+### 3. Run the FastAPI app
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
-Open Swagger docs:
+Open:
 
-```text
-http://127.0.0.1:8000/docs
-```
+- API docs: `http://127.0.0.1:8000/docs`
+- OpenAPI spec: `http://127.0.0.1:8000/openapi.json`
 
-## Integration Notes
+### 4. Optional demo clients
 
-### Backend Team
-
-- The main backend contract is the `PatientInput` request model and `RecommendationResponse` schema in `app/models.py`.
-- `app/services/llm.py` is the only place that talks to the LLM provider, so provider swaps can stay isolated there.
-- `app/tracker.py` currently writes to a local JSON file; that is fine for development but should move to structured logging or a database for shared environments.
-- CORS is configurable through `CORS_ALLOW_ORIGINS`.
-
-### Frontend Team
-
-- Use `POST /recommend` as the primary integration endpoint.
-- The response already includes user-facing fields for summary, explanation, red flags, and alternate specialists.
-- The `usage` block is optional from a product perspective; it is useful for debugging/admin panels but can be hidden in the main UI.
-- `GET /health` is useful for connectivity checks in local and staging environments.
-
-## Recommended Next Steps Before Production
-
-1. Add automated tests for `POST /recommend` with the LLM layer mocked.
-2. Move usage logging from `logs/usage.json` to a shared store or observability pipeline.
-3. Restrict CORS to known frontend origins.
-4. Add request authentication if this service will be exposed beyond internal use.
-5. Containerize the service for consistent backend/frontend team environments.
-
-## GitHub Push Workflow
-
-Once the repo is ready to publish:
+Run Streamlit:
 
 ```bash
-git init
-git add .
-git commit -m "Prepare FastAPI specialist recommender service"
-git remote add origin <your-github-repo-url>
-git branch -M main
-git push -u origin main
+streamlit run streamlit_app.py
 ```
 
-If this directory is already a git repository on your machine, use the existing remote instead of reinitializing it.
+Run CLI:
+
+```bash
+python specialist_recommender.py
+```
+
+## Quick API Example
+
+Using `curl`:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/recommend" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "age": 30,
+    "gender": "male",
+    "severity": "medium",
+    "duration_days": 4,
+    "symptoms": "persistent cough with chest tightness"
+  }'
+```
+
+Using JavaScript:
+
+```js
+const response = await fetch("http://127.0.0.1:8000/recommend", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    age: 30,
+    gender: "male",
+    severity: "medium",
+    duration_days: 4,
+    symptoms: "persistent cough with chest tightness"
+  })
+});
+
+const data = await response.json();
+console.log(data);
+```
+
+## Notes For Frontend Team
+
+- Use `POST /recommend` as the main endpoint.
+- The `usage` block is useful for debugging or admin UIs, but the core patient UI can ignore it.
+- `GET /health` is the easiest endpoint for local connectivity checks.
+- If you get a `503` from `/recommend`, the backend is usually missing `OPENROUTER_API_KEY` or the provider models are temporarily unavailable.
+- CORS defaults to `*` locally, but should be restricted before deployment.
+
+## Notes For Backend Team
+
+- The public API contract lives in `app/models.py`.
+- The provider-specific logic is isolated in `app/services/llm.py`.
+- If you want to swap providers later, start there.
+- The current log store is file-based and should be replaced in shared or deployed environments.
+- The route layer in `app/main.py` is intentionally thin and should stay that way.
+
+## Known Limitations
+
+- No automated tests yet
+- No request authentication
+- No database or centralized logging
+- No Dockerfile yet
+- No mock response mode for frontend-only development
+
+## Recommended Next Improvements
+
+1. Add FastAPI tests with the LLM service mocked.
+2. Add a mock mode so frontend developers can work without a real provider key.
+3. Replace local usage logging with structured logging or persistent storage.
+4. Add auth if this service will be exposed beyond trusted internal environments.
+5. Add containerization for consistent local and deployment workflows.
+
+## Git Notes
+
+If `.claude/settings.local.json` was committed earlier, remove it from tracking with:
+
+```bash
+git rm --cached .claude/settings.local.json
+git commit -m "Remove local Claude settings from repo"
+```
+
+The repo already ignores `.claude/` going forward.

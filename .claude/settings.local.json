@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"from app.services.llm import get_recommendation\")"
+    ]
+  }
+}

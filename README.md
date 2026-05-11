@@ -257,39 +257,46 @@ Create a `.env` file in the repo root based on `.env.example`.
 ### Required
 
 ```env
-OPENROUTER_API_KEY=your_key_here
+OPENAI_API_KEY=your_openai_key_here
 ```
 
-Without this key, `POST /recommend` will return a controlled error.
+This is the primary provider. Without it the service falls back to OpenRouter. If both are missing, `/recommend` returns `503`.
 
-### Optional
+### Optional — OpenAI
 
 ```env
+OPENAI_MODEL=gpt-4o
+```
+
+### Optional — OpenRouter fallback
+
+```env
+OPENROUTER_API_KEY=your_openrouter_key_here
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-OPENROUTER_MODEL=google/gemma-3n-e4b-it:free
+```
+
+### Optional — API & CORS
+
+```env
 API_TITLE=Specialist Recommender API
 API_VERSION=0.2.0
-API_DESCRIPTION=AI-assisted triage API for specialist consultation booking.
-CORS_ALLOW_ORIGINS=*
-```
-
-If the frontend is running separately, set `CORS_ALLOW_ORIGINS` explicitly. Example:
-
-```env
 CORS_ALLOW_ORIGINS=http://localhost:3000,https://your-frontend-domain.com
 ```
 
 ## Local Setup
 
-### 1. Install dependencies
+### 1. Create virtual environment and install dependencies
 
 ```bash
+python -m venv .venv
+.venv\Scripts\Activate.ps1   # Windows
+# source .venv/bin/activate  # Mac/Linux
 pip install -r requirements.txt
 ```
 
 ### 2. Create `.env`
 
-Copy `.env.example` and fill in your OpenRouter key.
+Copy `.env.example` and fill in your OpenAI key (and optionally OpenRouter).
 
 ### 3. Run the FastAPI app
 
@@ -356,7 +363,7 @@ console.log(data);
 - Use `POST /recommend` as the main endpoint.
 - The `usage` block is useful for debugging or admin UIs, but the core patient UI can ignore it.
 - `GET /health` is the easiest endpoint for local connectivity checks.
-- If you get a `503` from `/recommend`, the backend is usually missing `OPENROUTER_API_KEY` or the provider models are temporarily unavailable.
+- If you get a `503` from `/recommend`, both `OPENAI_API_KEY` and `OPENROUTER_API_KEY` are missing or all provider models are temporarily unavailable.
 - CORS defaults to `*` locally, but should be restricted before deployment.
 
 ## Notes For Backend Team

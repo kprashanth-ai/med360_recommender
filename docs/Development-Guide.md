@@ -3,27 +3,49 @@
 ## Prerequisites
 
 - Python 3.10+
-- An OpenRouter API key (free at openrouter.ai)
+- An OpenAI API key (primary provider — get one at platform.openai.com)
+- An OpenRouter API key (fallback — optional but recommended, free at openrouter.ai)
 
 ---
 
 ## Local Setup
 
-### 1. Install dependencies
+### 1. Create virtual environment
+
+```bash
+python -m venv .venv
+```
+
+Activate it:
+
+```powershell
+# Windows
+.venv\Scripts\Activate.ps1
+
+# Mac/Linux
+source .venv/bin/activate
+```
+
+### 2. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Create `.env`
+### 3. Create `.env`
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` and set your `OPENROUTER_API_KEY`.
+Edit `.env` and set your keys:
 
-### 3. Run the FastAPI server
+```env
+OPENAI_API_KEY=sk-proj-your-key-here
+OPENROUTER_API_KEY=sk-or-v1-your-key-here   # optional but recommended
+```
+
+### 4. Run the FastAPI server
 
 ```bash
 uvicorn app.main:app --reload
@@ -37,32 +59,36 @@ Open the interactive Swagger docs at `http://127.0.0.1:8000/docs`.
 
 ## Demo Clients
 
+### CLI Client (no server needed)
+
+The fastest way to test end-to-end. Calls the LLM service directly — the FastAPI server does not need to be running.
+
+```bash
+python specialist_recommender.py
+# or with venv
+.venv\Scripts\python specialist_recommender.py
+```
+
+Prompts interactively:
+```
+Age: 35
+Gender (male/female/other): male
+Severity (low/medium/high): medium
+Duration (in days): 5
+Describe your symptoms: persistent cough with chest tightness
+```
+
+Then prints the full recommendation, specialist pathway, red flags, token usage, and cost.
+
 ### Streamlit UI
 
-A visual form for testing recommendations without writing any code.
+A visual form for testing without writing any code. Requires the FastAPI server to be running.
 
 ```bash
 streamlit run streamlit_app.py
 ```
 
-Opens at `http://localhost:8501` by default.
-
-Features:
-- Age, gender, severity, duration inputs
-- Free-text symptom textarea
-- Displays specialist recommendation, pathway, red flags
-- Shows usage metrics and rate-limit quotas
-- Session totals in the footer
-
-### CLI Client
-
-A terminal walkthrough for quick local checks.
-
-```bash
-python specialist_recommender.py
-```
-
-Prompts interactively for all patient fields, then prints the full recommendation.
+Opens at `http://localhost:8501`. Features: form inputs, displays recommendation with specialist pathway, red flags, usage metrics, and session totals.
 
 ---
 
@@ -72,7 +98,8 @@ Prompts interactively for all patient fields, then prints the full recommendatio
 |------|--------------------|
 | `app/models.py` | Adding fields to request or response |
 | `app/prompts.py` | Changing what the LLM is instructed to do |
-| `app/services/llm.py` | Swapping or configuring the LLM provider |
+| `app/services/llm.py` | Swapping or configuring providers |
+| `app/config.py` | Adding env vars or changing fallback model list |
 | `app/constants.py` | Adding/removing specialist categories |
 | `app/tracker.py` | Usage logging or cost table updates |
 | `app/main.py` | Adding new API routes |
@@ -106,17 +133,18 @@ curl http://127.0.0.1:8000/usage
 
 ## Logs
 
-Usage is logged to `logs/usage.json` after each successful recommendation. The file is created automatically on first request.
+Usage is written to `logs/usage.json` after each successful recommendation. Created automatically on first request.
 
 Format per entry:
+
 ```json
 {
   "timestamp": "2026-05-11T10:32:14.123Z",
-  "model_used": "google/gemma-3n-e4b-it:free",
-  "prompt_tokens": 412,
-  "completion_tokens": 318,
-  "total_tokens": 730,
-  "cost_usd": 0.0,
+  "model": "gpt-4o",
+  "prompt_tokens": 481,
+  "completion_tokens": 308,
+  "total_tokens": 789,
+  "cost_usd": 0.00428,
   "rate_limits": { ... }
 }
 ```
@@ -125,17 +153,27 @@ Format per entry:
 
 ## Adding a New Specialist
 
-1. Add the specialist name to `SPECIALIST_LIST` in `app/constants.py`
-2. The system prompt in `app/prompts.py` reads from `SPECIALIST_LIST` — no changes needed there
-3. Update the valid values documentation in [[API-Reference]]
+1. Add the name to `SPECIALISTS` in `app/constants.py`
+2. The system prompt reads from `SPECIALISTS` automatically — no other code changes needed
+3. Update the valid values table in [[API-Reference]]
+
+---
+
+## Adding a New Paid Model to Cost Tracking
+
+Add an entry to `MODEL_PRICING` in `app/tracker.py`:
+
+```python
+"your-model-id": {"input": 1.00, "output": 3.00},  # per 1M tokens
+```
 
 ---
 
 ## Common Issues
 
 **`503` on `/recommend`**
-- Missing or invalid `OPENROUTER_API_KEY` in `.env`
-- All free models rate-limited simultaneously (rare — try again in a few minutes)
+- `OPENAI_API_KEY` is missing or invalid AND `OPENROUTER_API_KEY` is also missing — at least one provider must be configured
+- All OpenRouter free models are rate-limited simultaneously (rare — try again in a few minutes)
 
 **`422` on `/recommend`**
 - Request body fails validation — check field names, types, and value ranges
@@ -144,6 +182,10 @@ Format per entry:
 **Streamlit shows connection error**
 - Make sure `uvicorn` is running before starting Streamlit
 - Both must be running simultaneously
+
+**CLI works but server doesn't (or vice versa)**
+- The CLI (`specialist_recommender.py`) imports directly from `app/` — it doesn't go through HTTP
+- The FastAPI server is the HTTP interface; the CLI is a direct Python import
 
 ---
 

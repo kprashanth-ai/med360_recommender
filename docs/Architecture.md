@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Specialist Recommender is a single FastAPI service. It has no database — state is limited to a local usage log file. All intelligence comes from an LLM accessed via OpenRouter.
+The Specialist Recommender is a single FastAPI service with no database. State is limited to a local usage log file. All intelligence comes from an LLM — OpenAI is the primary provider, OpenRouter free models are the fallback.
 
 ```
 Client (browser / frontend / CLI)
@@ -19,12 +19,17 @@ Client (browser / frontend / CLI)
         ▼
   LLM Service (app/services/llm.py)
         │
-        ▼
-  OpenRouter API ──► Primary model
-                 └──► Fallback models (if primary fails)
+        ├──► openai_client → OpenAI API (gpt-4o) [PRIMARY]
+        │         │
+        │    success? ──► return
+        │    failure? ──► try OpenRouter
+        │
+        └──► openrouter_client → OpenRouter free models [FALLBACK]
+                  │
+             iterate 11 models until one succeeds
         │
         ▼
-  Response validation (Pydantic internal model)
+  Response validation (LLMRecommendationPayload — Pydantic)
         │
         ▼
   Usage logger (app/tracker.py ──► logs/usage.json)
@@ -42,7 +47,7 @@ Client (browser / frontend / CLI)
 - Thin route layer, no business logic
 - CORS middleware (configurable via `CORS_ALLOW_ORIGINS`)
 - 4 routes: `/`, `/health`, `/usage`, `/recommend`
-- All route handlers delegate immediately to service layer
+- All route handlers delegate immediately to the service layer
 
 ### `app/models.py` — Data Contracts
 
@@ -55,38 +60,47 @@ See [[Data-Models]] for full field definitions.
 
 ### `app/services/llm.py` — LLM Integration Layer
 
-The only module that talks to OpenRouter. Responsibilities:
-- Build the OpenAI-compatible chat request
-- Try primary model, iterate fallbacks on failure
-- Parse and validate the JSON response
-- Extract rate-limit headers from the HTTP response
-- Return a normalized `LLMRecommendationPayload`
+The only module that talks to external AI providers. Two clients:
+- `openai_client` — `OpenAI(api_key=OPENAI_API_KEY)` → hits `api.openai.com`
+- `openrouter_client` — `OpenAI(api_key=OPENROUTER_API_KEY, base_url=OPENROUTER_BASE_URL)` → hits `openrouter.ai`
+
+Responsibilities:
+- Try OpenAI primary model first
+- On any failure, iterate OpenRouter fallback models
+- Validate returned JSON against `LLMRecommendationPayload`
+- Extract rate-limit headers from HTTP response
+- Return normalized `(data, model_used, usage_entry)`
 
 See [[LLM-Integration]] for full details.
 
 ### `app/prompts.py` — Prompt Engineering
 
-- System prompt instructs the model to act as a triage assistant
-- Embeds the full specialist list and output JSON schema
-- Patient details are injected as user message content
+- System prompt defines the triage assistant role and output format
+- Embeds the full `SPECIALISTS` list from `app/constants.py`
+- Enforces `response_format={"type": "json_object"}` at the API call level
+- Patient details are injected as the user message
 
 ### `app/tracker.py` — Usage Tracking
 
-- Thread-safe local file logger (JSON append)
+- Thread-safe local file logger using `threading.Lock()`
+- Writes atomically via temp file + `replace()` to prevent corruption
 - Parses `x-ratelimit-*` response headers
-- Estimates per-request cost using a pricing table
-- Provides aggregation for `GET /usage`
+- Estimates cost per request using `MODEL_PRICING` table
+- Provides `get_session_totals()` for `GET /usage`
 
 ### `app/config.py` — Configuration
 
-Reads environment variables via `python-dotenv`. All config is centralized here — no scattered `os.getenv()` calls elsewhere.
+Reads environment variables via `python-dotenv`. All config is centralized here.
+- `OPENAI_API_KEY`, `OPENAI_MODEL` — primary provider
+- `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL` — fallback provider
+- `OPENROUTER_FALLBACKS` — ordered list of 11 fallback model IDs
 
 See [[Configuration]] for all variables.
 
 ### `app/constants.py` — Static Data
 
-- `SPECIALIST_LIST` — 20 valid specialist categories the LLM must choose from
-- `DISCLAIMER` — Standard medical/legal disclaimer appended to every response
+- `SPECIALISTS` — list of 20 valid specialist categories the LLM must choose from
+- `RECOMMENDATION_DISCLAIMER` — medical/legal disclaimer appended to every response
 
 ---
 
@@ -94,14 +108,14 @@ See [[Configuration]] for all variables.
 
 1. `POST /recommend` receives JSON body
 2. Pydantic validates and coerces `PatientInput`
-3. `build_patient_info(patient)` formats the patient details into a readable string
+3. `build_patient_info(patient)` formats patient details into a string
 4. `get_recommendation(patient_info)` is called in `llm.py`
-5. System prompt + patient string are sent to OpenRouter as a chat completion request
-6. If the primary model returns a rate limit or error, the service iterates through `FREE_MODEL_FALLBACKS`
-7. The raw JSON string from the LLM is parsed and validated against `LLMRecommendationPayload`
-8. `parse_rate_limits(headers)` extracts quota info from response headers
-9. `record_usage(...)` appends a log entry to `logs/usage.json`
-10. A `RecommendationResponse` is assembled and returned to the client
+5. System prompt + patient string sent to **OpenAI** as a chat completion (with `response_format=json_object`)
+6. If OpenAI fails for any reason → iterate through `OPENROUTER_FALLBACKS` on `openrouter_client`
+7. Raw JSON from the LLM is validated against `LLMRecommendationPayload`
+8. `parse_rate_limits(headers)` extracts quota info from HTTP response headers
+9. `record_usage(...)` writes a log entry to `logs/usage.json` (thread-safe)
+10. `RecommendationResponse` is assembled and returned to the client
 
 ---
 
@@ -110,16 +124,16 @@ See [[Configuration]] for all variables.
 | Scenario | Behaviour |
 |----------|-----------|
 | Invalid request body | 422 Unprocessable Entity (Pydantic) |
-| All LLM models fail | 503 Service Unavailable |
-| LLM returns malformed JSON | Retried with next fallback model |
-| Missing API key | 503 (caught at LLM service init) |
+| OpenAI fails, all OpenRouter fallbacks fail | 503 Service Unavailable |
+| LLM returns malformed JSON | Retry with next model |
+| Both API keys missing | 503 (no providers available) |
 
 ---
 
 ## Concurrency Notes
 
-- FastAPI + Uvicorn is async; the LLM call is the only I/O-heavy operation
-- Usage logger uses a threading lock for file safety under concurrent requests
+- FastAPI + Uvicorn is async; the LLM HTTP call is the primary I/O operation
+- Usage logger uses `threading.Lock` for file safety under concurrent requests
 - No shared mutable state beyond the log file
 
 ---

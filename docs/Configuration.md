@@ -1,6 +1,6 @@
 # Configuration
 
-All configuration is managed via environment variables loaded from `.env` using `python-dotenv`. The values are centralized in `app/config.py` — no scattered `os.getenv()` elsewhere.
+All configuration is managed via environment variables loaded from `.env` using `python-dotenv`. Values are centralized in `app/config.py`.
 
 ---
 
@@ -8,7 +8,7 @@ All configuration is managed via environment variables loaded from `.env` using 
 
 ```bash
 cp .env.example .env
-# Edit .env and fill in OPENROUTER_API_KEY
+# Edit .env — at minimum set OPENAI_API_KEY
 ```
 
 ---
@@ -19,51 +19,72 @@ cp .env.example .env
 
 | Variable | Description |
 |----------|-------------|
-| `OPENROUTER_API_KEY` | Your OpenRouter API key. Get one at openrouter.ai |
+| `OPENAI_API_KEY` | OpenAI API key. Primary provider. Get one at platform.openai.com |
 
-Without this key, `POST /recommend` will return a `503` error.
+Without `OPENAI_API_KEY`, the service will skip OpenAI and attempt OpenRouter fallbacks. If `OPENROUTER_API_KEY` is also missing, every `/recommend` call returns `503`.
 
-### Optional
+### Optional — OpenAI (Primary)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `OPENAI_MODEL` | `gpt-4o` | Primary model to use for recommendations |
+
+### Optional — OpenRouter (Fallback)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OPENROUTER_API_KEY` | *(empty)* | OpenRouter key, used only if OpenAI fails |
 | `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | OpenRouter API base URL |
-| `OPENROUTER_MODEL` | `google/gemma-3n-e4b-it:free` | Primary LLM model to use |
+
+### Optional — API Metadata
+
+| Variable | Default | Description |
+|----------|---------|-------------|
 | `API_TITLE` | `Specialist Recommender API` | Name shown in Swagger UI |
-| `API_VERSION` | `0.2.0` | Version shown in Swagger UI and `/` endpoint |
+| `API_VERSION` | `0.2.0` | Version shown in Swagger and `/` endpoint |
 | `API_DESCRIPTION` | *(see config.py)* | Description in Swagger UI |
-| `CORS_ALLOW_ORIGINS` | `*` | Comma-separated allowed origins for CORS |
+| `CORS_ALLOW_ORIGINS` | `*` | Comma-separated allowed CORS origins |
 
 ---
 
 ## Example `.env` Files
 
-### Local development (minimal)
+### Minimal (OpenAI only)
 
 ```env
+OPENAI_API_KEY=sk-proj-your-key-here
+```
+
+### With OpenRouter fallback (recommended)
+
+```env
+OPENAI_API_KEY=sk-proj-your-key-here
 OPENROUTER_API_KEY=sk-or-v1-your-key-here
 ```
 
-### Local with frontend on port 3000
+### Local dev with frontend on port 3000
 
 ```env
+OPENAI_API_KEY=sk-proj-your-key-here
 OPENROUTER_API_KEY=sk-or-v1-your-key-here
 CORS_ALLOW_ORIGINS=http://localhost:3000
 ```
 
-### Using a paid/specific model
+### Using a different OpenAI model
 
 ```env
+OPENAI_API_KEY=sk-proj-your-key-here
+OPENAI_MODEL=gpt-4o-mini
 OPENROUTER_API_KEY=sk-or-v1-your-key-here
-OPENROUTER_MODEL=anthropic/claude-3-5-sonnet
 ```
 
 ### Production-like
 
 ```env
+OPENAI_API_KEY=sk-proj-your-key-here
+OPENAI_MODEL=gpt-4o
 OPENROUTER_API_KEY=sk-or-v1-your-key-here
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-OPENROUTER_MODEL=google/gemma-3n-e4b-it:free
 API_TITLE=Specialist Recommender API
 API_VERSION=0.2.0
 CORS_ALLOW_ORIGINS=https://app.med360.com,https://admin.med360.com
@@ -74,29 +95,44 @@ CORS_ALLOW_ORIGINS=https://app.med360.com,https://admin.med360.com
 ## CORS Notes
 
 - Default `*` is fine for local development
-- For any shared or deployed environment, explicitly set `CORS_ALLOW_ORIGINS` to the frontend domains
-- Multiple origins: comma-separated with no spaces — `https://a.com,https://b.com`
+- For any shared or deployed environment, explicitly set `CORS_ALLOW_ORIGINS`
+- Multiple origins: comma-separated, no spaces — `https://a.com,https://b.com`
 
 ---
 
-## Model Selection Notes
+## Provider Fallback Logic
 
-- The `OPENROUTER_MODEL` variable sets the **primary** model
-- If the primary model is rate-limited or unavailable, the service falls back through 11 additional free models automatically
-- See [[LLM-Integration]] for the full fallback list
-- To use a paid model as primary, set `OPENROUTER_MODEL` to the paid model's ID — fallbacks will still be free models
+```
+Request arrives
+    │
+    ▼
+OPENAI_API_KEY set?
+    ├─ Yes → Try gpt-4o (or OPENAI_MODEL)
+    │           ├─ Success → return response
+    │           └─ Any error → fall through to OpenRouter
+    └─ No  → skip to OpenRouter
+    │
+    ▼
+OPENROUTER_API_KEY set?
+    ├─ Yes → Try 11 free models in order
+    │           ├─ First success → return response
+    │           └─ All fail → 503
+    └─ No  → 503 (no providers available)
+```
 
 ---
 
 ## Config in Code (`app/config.py`)
 
 ```python
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENAI_API_KEY   = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL     = os.getenv("OPENAI_MODEL", "gpt-4o")
+
+OPENROUTER_API_KEY  = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemma-3n-e4b-it:free")
-API_TITLE = os.getenv("API_TITLE", "Specialist Recommender API")
-API_VERSION = os.getenv("API_VERSION", "0.2.0")
-API_DESCRIPTION = os.getenv("API_DESCRIPTION", "...")
+
+API_TITLE        = os.getenv("API_TITLE", "Specialist Recommender API")
+API_VERSION      = os.getenv("API_VERSION", "0.2.0")
 CORS_ALLOW_ORIGINS = os.getenv("CORS_ALLOW_ORIGINS", "*").split(",")
 ```
 

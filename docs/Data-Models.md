@@ -25,13 +25,13 @@ class PatientInput(BaseModel):
 | `duration_days` | `int` | 1 ≤ days ≤ 365 | Duration of symptoms |
 | `symptoms` | `str` | min 5 chars | Free-text description |
 
-Pydantic will return a `422 Unprocessable Entity` with field-level error details if validation fails.
+Pydantic returns `422 Unprocessable Entity` with field-level error details if validation fails.
 
 ---
 
 ## LLMRecommendationPayload (Internal)
 
-Used internally to validate the raw JSON string returned by the LLM. Never exposed to API clients directly.
+Used internally to validate the raw JSON string returned by the LLM. Never exposed to API clients.
 
 ```python
 class SpecialistPathwayItem(BaseModel):
@@ -42,17 +42,23 @@ class LLMRecommendationPayload(BaseModel):
     recommended_specialist: str
     primary_recommendation_summary: str
     symptom_explanation: str
-    specialist_pathway: list[SpecialistPathwayItem]  # exactly 3
-    red_flags: list[str]                              # 3–5 items
+    specialist_pathway: list[SpecialistPathwayItem]  # up to 3 items
+    red_flags: list[str]                              # 3–5 items (LLM guideline)
+    disclaimer: str
 ```
 
 If the LLM returns malformed JSON or a schema mismatch, the LLM service retries with the next fallback model.
 
+**Notes:**
+- `specialist_pathway` — the prompt instructs the LLM to return up to 3 items; this is a guideline, not enforced by Pydantic
+- `red_flags` — the prompt instructs 3 to 5 items; the count is not Pydantic-validated
+- `recommended_specialist` — must be one of the 20 values in `app/constants.py SPECIALISTS`, enforced by the system prompt not by Pydantic
+
 ---
 
-## RecommendationResponse (Response)
+## RecommendationResponse (Public API Response)
 
-Public API response for `POST /recommend`. Extends `LLMRecommendationPayload` with usage metadata.
+Returned to clients from `POST /recommend`. Extends the LLM payload with usage metadata.
 
 ```python
 class RateLimitInfo(BaseModel):
@@ -88,24 +94,48 @@ class RecommendationResponse(BaseModel):
 
 | Field | Description |
 |-------|-------------|
-| `recommended_specialist` | Single specialist chosen from the 20-item list |
+| `recommended_specialist` | Single specialist from the 20-item `SPECIALISTS` list |
 | `primary_recommendation_summary` | 2–3 sentences for the patient, not clinical language |
 | `symptom_explanation` | Why these symptoms point to this specialist |
-| `specialist_pathway` | 3 alternative pathways (ordered by relevance) |
-| `red_flags` | 3–5 symptoms that warrant emergency/urgent care |
-| `disclaimer` | Static medical/legal disclaimer from `app/constants.py` |
+| `specialist_pathway` | Up to 3 alternative pathways (ordered by relevance) |
+| `red_flags` | 3–5 symptoms warranting emergency/urgent care |
+| `disclaimer` | Static text from `RECOMMENDATION_DISCLAIMER` in `app/constants.py` |
 
-**Usage metadata** (sourced from OpenRouter response):
+**Usage metadata** (sourced from provider response):
 
 | Field | Description |
 |-------|-------------|
-| `model_used` | Actual model that produced the response (may differ from configured primary) |
+| `model_used` | Actual model that produced the response (may be OpenAI or an OpenRouter fallback) |
 | `prompt_tokens` | Tokens in the input (system prompt + patient info) |
 | `completion_tokens` | Tokens in the LLM output |
 | `total_tokens` | Sum of prompt + completion |
-| `cost_usd` | Estimated cost; 0.0 for all free-tier models |
+| `cost_usd` | Estimated cost; ~$0.004 for gpt-4o, $0.00 for OpenRouter free models |
 | `rate_limits.requests` | Provider rate-limit quota for requests |
-| `rate_limits.tokens` | Provider rate-limit quota for tokens (often null) |
+| `rate_limits.tokens` | Provider rate-limit quota for tokens (often null for OpenAI direct) |
+
+---
+
+## Static Data (`app/constants.py`)
+
+### `SPECIALISTS`
+
+The 20 valid specialist categories. The system prompt embeds this list and instructs the LLM to pick exactly one.
+
+```
+General Physician        Dermatologist          Cardiologist
+Neurologist              Orthopedic Surgeon     Gastroenterologist
+Pulmonologist            Endocrinologist        Psychiatrist
+Ophthalmologist          ENT Specialist         Urologist
+Gynecologist             Rheumatologist         Allergist/Immunologist
+Oncologist               Nephrologist           Infectious Disease Specialist
+Hematologist             Pediatrician
+```
+
+### `RECOMMENDATION_DISCLAIMER`
+
+Static medical/legal text appended to every response:
+
+> "This recommendation is an AI-assisted triage suggestion for consultation booking only. It is not a medical diagnosis or emergency advice. Please consult a qualified clinician for confirmation, and seek urgent care immediately for severe or worsening symptoms."
 
 ---
 
@@ -121,10 +151,10 @@ PatientInput ──► (validated request)
          LLMRecommendationPayload ──► (internal validation)
                        │
                        ▼
-          + disclaimer + UsageInfo
+          + UsageInfo (from provider headers + tracker)
                        │
                        ▼
-         RecommendationResponse ──► (API response)
+         RecommendationResponse ──► (API response to client)
 ```
 
 ---

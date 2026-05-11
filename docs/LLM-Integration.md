@@ -4,31 +4,44 @@ All LLM communication is isolated in `app/services/llm.py`.
 
 ---
 
-## Provider
+## Provider Strategy
 
-**OpenRouter** — an OpenAI-compatible API aggregator that routes to multiple model providers. The service uses the OpenAI Python SDK pointed at OpenRouter's base URL.
+The service uses a **two-tier provider strategy**:
 
-```
-OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-```
+1. **Primary — OpenAI** (`api.openai.com` via `openai_client`)
+2. **Fallback — OpenRouter** (`openrouter.ai` via `openrouter_client`)
 
-OpenRouter provides access to both free and paid models under a single API key, making the fallback strategy simple to implement.
+OpenAI is always tried first. OpenRouter free models are only used if OpenAI fails. Both clients use the OpenAI Python SDK — OpenRouter is OpenAI-compatible so the same SDK works for both.
 
 ---
 
-## Model Strategy
+## Primary: OpenAI
 
-### Primary Model
+Configured via `.env`:
 
-Configured via `OPENROUTER_MODEL` env var. Default:
-
+```env
+OPENAI_API_KEY=sk-proj-...
+OPENAI_MODEL=gpt-4o          # optional, defaults to gpt-4o
 ```
-google/gemma-3n-e4b-it:free
+
+**Default model:** `gpt-4o`
+
+The service sends a structured JSON chat completion request to `api.openai.com`. The primary model runs on every request as long as it responds successfully.
+
+> Using `gpt-4o` as primary incurs cost. See the pricing table below.
+
+---
+
+## Fallback: OpenRouter Free Models
+
+Used only when OpenAI fails. Configured via `.env`:
+
+```env
+OPENROUTER_API_KEY=sk-or-v1-...
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 ```
 
-### Fallback Chain
-
-If the primary model fails (rate limit, model not found, API error, or JSON validation failure), the service iterates through this list in order:
+The service iterates through this list in order until one succeeds:
 
 ```
 1.  mistralai/mistral-7b-instruct:free
@@ -44,18 +57,24 @@ If the primary model fails (rate limit, model not found, API error, or JSON vali
 11. qwen/qwen-2.5-7b-instruct:free
 ```
 
-All models are free-tier, so cost is $0.00 under normal operation.
+All fallback models are free-tier — cost is $0.00 when any of these handle the request.
 
-### Fallback Triggers
+---
 
-A fallback is triggered when:
-- `RateLimitError` from OpenRouter
-- `NotFoundError` (model unavailable or removed)
-- `APIConnectionError`
-- LLM returns malformed JSON (fails `LLMRecommendationPayload` validation)
-- Any unexpected exception
+## Fallback Triggers
 
-If all models in the chain fail, the service raises an exception and the API returns `503 Service Unavailable`.
+A fallback to the next model is triggered when:
+
+- `RateLimitError` — provider quota exceeded
+- `AuthenticationError` — invalid API key
+- `NotFoundError` — model unavailable or removed
+- `APIConnectionError` / `APITimeoutError` — network failure
+- `BadRequestError` — malformed request
+- `APIError` — other API-level error
+- `json.JSONDecodeError` / `ValidationError` — LLM returned malformed or schema-mismatched JSON
+
+If OpenAI fails → iterate OpenRouter fallbacks.
+If all OpenRouter fallbacks fail → raise `RuntimeError` → API returns `503 Service Unavailable`.
 
 ---
 
@@ -65,65 +84,53 @@ Defined in `app/prompts.py`.
 
 ### System Prompt Structure
 
-The system prompt does three things:
-
-1. **Role definition** — instructs the model it is a medical triage assistant, not a diagnostician
-2. **Specialist constraint** — provides the full list of 20 valid specialist names; model must choose exactly one
-3. **Output schema** — provides the exact JSON structure the model must return
-
-```
-You are a medical triage assistant...
-Choose ONE specialist from: [list]
-Return ONLY valid JSON matching this schema: {...}
-```
+1. **Role definition** — triage assistant, not a diagnostician; picks exactly one specialist or defaults to General Physician if uncertain
+2. **Output fields** — instructs the model to return `primary_recommendation_summary`, `symptom_explanation`, `specialist_pathway` (up to 3), `red_flags` (3 to 5)
+3. **Output schema** — the exact JSON structure the model must return, with the full specialist list embedded
 
 ### User Message
 
-The patient details are formatted by `build_patient_info()` and sent as the user turn:
+Patient details formatted by `build_patient_info()`:
 
 ```
-Patient Information:
-Age: 30
-Gender: male
-Symptoms: persistent cough with chest tightness
-Severity: medium
-Duration: 4 days
+Patient info: Age: 30, Gender: male, Severity: medium, Duration: 4 days, Symptoms: persistent cough with chest tightness
 ```
 
-### Output Format
+### JSON Enforcement
 
-The model is instructed to return raw JSON only — no markdown fences, no preamble. The response is then parsed and validated against `LLMRecommendationPayload`.
+`response_format={"type": "json_object"}` is sent with every request. This forces the model to return raw JSON — no markdown fences, no preamble. The response is then validated against `LLMRecommendationPayload` using Pydantic.
 
 ---
 
 ## Rate Limit Parsing
 
-After each successful call, `parse_rate_limits()` in `app/tracker.py` reads these HTTP response headers:
+After each call, `parse_rate_limits()` in `app/tracker.py` reads these HTTP response headers (normalized to lowercase by httpx):
 
 ```
-x-ratelimit-limit-requests
-x-ratelimit-remaining-requests
-x-ratelimit-reset-requests
+x-ratelimit-limit-requests       x-ratelimit-limit
+x-ratelimit-remaining-requests   x-ratelimit-remaining
+x-ratelimit-reset-requests       x-ratelimit-reset
 x-ratelimit-limit-tokens
 x-ratelimit-remaining-tokens
 x-ratelimit-reset-tokens
 ```
 
-These values are surfaced in `RecommendationResponse.usage.rate_limits` so clients can monitor quota consumption.
+These are surfaced in `RecommendationResponse.usage.rate_limits`. OpenAI returns request-count limits; token limits are typically null for OpenAI direct calls.
 
 ---
 
 ## Cost Estimation
 
-`app/tracker.py` maintains a pricing table for known models (in USD per 1M tokens):
+`app/tracker.py` maintains a pricing table (USD per 1M tokens):
 
-| Model | Prompt | Completion |
-|-------|--------|------------|
-| Free-tier (all `:free` models) | $0.00 | $0.00 |
-| `gpt-4o-mini` | $0.15 | $0.60 |
-| `gpt-4o` | $5.00 | $15.00 |
-| `claude-3-5-sonnet` | $3.00 | $15.00 |
-| `claude-3-haiku` | $0.25 | $1.25 |
+| Model | Input | Output | Notes |
+|-------|-------|--------|-------|
+| `gpt-4o` | $2.50 | $10.00 | OpenAI primary |
+| `gpt-4o-mini` | $0.15 | $0.60 | OpenAI alternative |
+| `openai/gpt-4o` | $2.50 | $10.00 | Via OpenRouter |
+| `openai/gpt-4o-mini` | $0.15 | $0.60 | Via OpenRouter |
+| All `:free` models | $0.00 | $0.00 | OpenRouter fallbacks |
+| Unknown models | $0.00 | $0.00 | Default fallback pricing |
 
 Cost is logged per request and aggregated by `GET /usage`.
 
@@ -131,13 +138,11 @@ Cost is logged per request and aggregated by `GET /usage`.
 
 ## Swapping Providers
 
-The LLM layer is fully isolated in `app/services/llm.py`. To swap to a different provider:
+The LLM layer is fully isolated in `app/services/llm.py`. To change the primary provider:
 
-1. Change `OPENROUTER_BASE_URL` and `OPENROUTER_API_KEY` in `.env`
-2. Update the model names in `FREE_MODEL_FALLBACKS` to match the new provider's model IDs
-3. Verify the new provider returns the same OpenAI-compatible response shape
-
-No changes needed outside `llm.py` and `config.py`.
+1. Update `OPENAI_API_KEY` and `OPENAI_MODEL` in `.env` (or swap the `openai_client` initialization in `llm.py`)
+2. To change fallback models, edit `OPENROUTER_FALLBACKS` in `app/config.py`
+3. Add any new paid model IDs to `MODEL_PRICING` in `app/tracker.py` for accurate cost tracking
 
 ---
 

@@ -11,6 +11,9 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 
+# Mock mode (set MOCK_MODE=true to return a static response without calling any LLM)
+MOCK_MODE = os.getenv("MOCK_MODE", "false").lower() == "true"
+
 # API metadata
 API_TITLE = os.getenv("API_TITLE", "Specialist Recommender API")
 API_VERSION = os.getenv("API_VERSION", "0.2.0")

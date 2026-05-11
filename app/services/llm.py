@@ -13,6 +13,7 @@ from openai import (
 from pydantic import ValidationError
 
 from app.config import (
+    MOCK_MODE,
     OPENAI_API_KEY,
     OPENAI_MODEL,
     OPENROUTER_API_KEY,
@@ -22,6 +23,33 @@ from app.config import (
 from app.models import LLMRecommendationPayload
 from app.prompts import SYSTEM_PROMPT
 from app.tracker import parse_rate_limits, record_usage
+
+MOCK_RESPONSE = {
+    "recommended_specialist": "General Physician",
+    "primary_recommendation_summary": (
+        "This is a mock response for frontend development. "
+        "No real LLM was called. Set MOCK_MODE=false and provide API keys for live responses."
+    ),
+    "symptom_explanation": (
+        "Mock mode is active. This response is static and does not reflect the submitted symptoms. "
+        "It is provided so the frontend can be developed and tested without a live API key."
+    ),
+    "specialist_pathway": [
+        {"specialist": "General Physician", "reason": "Mock pathway item 1"},
+        {"specialist": "Dermatologist", "reason": "Mock pathway item 2"},
+        {"specialist": "Cardiologist", "reason": "Mock pathway item 3"},
+    ],
+    "red_flags": [
+        "This is a mock red flag — not real medical advice",
+        "MOCK_MODE=true is set in your environment",
+        "Replace with real API keys to get live responses",
+    ],
+    "disclaimer": (
+        "This recommendation is an AI-assisted triage suggestion for consultation booking only. "
+        "It is not a medical diagnosis or emergency advice. Please consult a qualified clinician "
+        "for confirmation, and seek urgent care immediately for severe or worsening symptoms."
+    ),
+}
 
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -73,6 +101,17 @@ def get_recommendation(patient_info: str) -> tuple[dict, str, dict]:
     Returns (response_dict, model_used, usage_entry).
     Raises RuntimeError if all providers fail.
     """
+    if MOCK_MODE:
+        print("  [MOCK MODE] returning static response", flush=True)
+        mock_usage = record_usage(
+            model="mock",
+            prompt_tokens=0,
+            completion_tokens=0,
+            rate_limits={"requests": {"limit": None, "remaining": None, "reset": None},
+                         "tokens": {"limit": None, "remaining": None, "reset": None}},
+        )
+        return MOCK_RESPONSE, "mock", mock_usage
+
     failures: list[str] = []
 
     # --- Primary: OpenAI ---

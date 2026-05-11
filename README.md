@@ -1,14 +1,30 @@
 # Specialist Recommender API
 
-FastAPI service for symptom-based specialist recommendation.
+FastAPI service for symptom-based specialist recommendation. Part of the **Med360** platform.
 
 This repository contains:
 
 - a reusable FastAPI backend in `app/`
 - a Streamlit demo client in `streamlit_app.py`
 - a simple CLI demo client in `specialist_recommender.py`
+- an Obsidian documentation vault in `docs/`
 
 The main team integration target is the FastAPI app.
+
+## Documentation
+
+Full documentation is in the `docs/` folder (open as an Obsidian vault):
+
+| Doc | Contents |
+|-----|---------|
+| [docs/Home.md](docs/Home.md) | Index and quick links |
+| [docs/Architecture.md](docs/Architecture.md) | System design and request flow |
+| [docs/API-Reference.md](docs/API-Reference.md) | All endpoints with examples |
+| [docs/Data-Models.md](docs/Data-Models.md) | Pydantic request/response contracts |
+| [docs/LLM-Integration.md](docs/LLM-Integration.md) | OpenRouter setup and fallback strategy |
+| [docs/Configuration.md](docs/Configuration.md) | Environment variables |
+| [docs/Development-Guide.md](docs/Development-Guide.md) | Local setup and dev workflow |
+| [docs/Roadmap.md](docs/Roadmap.md) | Known gaps and planned improvements |
 
 ## What This Service Does
 

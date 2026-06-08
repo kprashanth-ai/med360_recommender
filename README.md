@@ -59,7 +59,6 @@ What is not production-ready yet:
 - no automated test suite yet
 - usage logging is local-file based, not centralized
 - no container setup yet
-- no mock mode for frontend work without a real API key
 
 ## Project Structure
 
@@ -210,17 +209,17 @@ Response shape:
 
 ```json
 {
-  "recommended_specialist": "Allergist/Immunologist",
-  "primary_recommendation_summary": "Your symptoms may fit an allergy-related pattern and should be evaluated by a specialist.",
-  "symptom_explanation": "The combination of rash, itching, and hives after eating can indicate the body is reacting to a trigger.",
+  "recommended_specialist": "Dermatologist",
+  "primary_recommendation_summary": "Your symptoms suggest an allergic skin reaction that should be evaluated by a specialist.",
+  "symptom_explanation": "The combination of rash, itching, and hives after eating can indicate the body is reacting to a food or environmental trigger.",
   "specialist_pathway": [
     {
-      "specialist": "Allergist/Immunologist",
-      "reason": "Best fit for allergy evaluation"
+      "specialist": "Dermatologist",
+      "reason": "Best fit for evaluating skin-based allergic reactions"
     },
     {
-      "specialist": "Dermatologist",
-      "reason": "Useful if symptoms are mostly skin-focused"
+      "specialist": "General Physician",
+      "reason": "Starting point if specialist access is delayed"
     }
   ],
   "red_flags": [
@@ -380,15 +379,13 @@ console.log(data);
 - No request authentication
 - No database or centralized logging
 - No Dockerfile yet
-- No mock response mode for frontend-only development
 
 ## Recommended Next Improvements
 
 1. Add FastAPI tests with the LLM service mocked.
-2. Add a mock mode so frontend developers can work without a real provider key.
-3. Replace local usage logging with structured logging or persistent storage.
-4. Add auth if this service will be exposed beyond trusted internal environments.
-5. Add containerization for consistent local and deployment workflows.
+2. Replace local usage logging with structured logging or persistent storage.
+3. Add auth if this service will be exposed beyond trusted internal environments.
+4. Add containerization for consistent local and deployment workflows.
 
 ## Git Notes
 

@@ -89,13 +89,13 @@ Content-Type: application/json
 **Response:**
 ```json
 {
-  "recommended_specialist": "Allergist/Immunologist",
-  "primary_recommendation_summary": "Your symptoms suggest an allergic reaction...",
-  "symptom_explanation": "The rash, itching, and hives occurring after eating...",
+  "recommended_specialist": "Dermatologist",
+  "primary_recommendation_summary": "Your symptoms suggest an allergic skin reaction that should be evaluated by a specialist.",
+  "symptom_explanation": "The rash, itching, and hives occurring after eating can indicate a reaction to a food or environmental trigger.",
   "specialist_pathway": [
-    { "specialist": "Allergist/Immunologist", "reason": "Best fit for allergic reactions" },
-    { "specialist": "Dermatologist", "reason": "If skin-focused without systemic symptoms" },
-    { "specialist": "General Physician", "reason": "Starting point if specialist access is delayed" }
+    { "specialist": "Dermatologist", "reason": "Best fit for skin-based allergic reactions" },
+    { "specialist": "General Physician", "reason": "Starting point if specialist access is delayed" },
+    { "specialist": "Gastroenterologist", "reason": "If food intolerance with GI involvement is suspected" }
   ],
   "red_flags": [
     "difficulty breathing or swallowing",

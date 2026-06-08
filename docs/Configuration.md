@@ -36,6 +36,12 @@ Without `OPENAI_API_KEY`, the service will skip OpenAI and attempt OpenRouter fa
 | `OPENROUTER_API_KEY` | *(empty)* | OpenRouter key, used only if OpenAI fails |
 | `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | OpenRouter API base URL |
 
+### Optional — Mock Mode
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MOCK_MODE` | `false` | Set to `true` to return a static response without calling any LLM. Useful for frontend development without API keys |
+
 ### Optional — API Metadata
 
 | Variable | Default | Description |
@@ -130,6 +136,8 @@ OPENAI_MODEL     = os.getenv("OPENAI_MODEL", "gpt-4o")
 
 OPENROUTER_API_KEY  = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+
+MOCK_MODE        = os.getenv("MOCK_MODE", "false").lower() == "true"
 
 API_TITLE        = os.getenv("API_TITLE", "Specialist Recommender API")
 API_VERSION      = os.getenv("API_VERSION", "0.2.0")

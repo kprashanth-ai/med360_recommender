@@ -52,7 +52,7 @@ If the LLM returns malformed JSON or a schema mismatch, the LLM service retries 
 **Notes:**
 - `specialist_pathway` — the prompt instructs the LLM to return up to 3 items; this is a guideline, not enforced by Pydantic
 - `red_flags` — the prompt instructs 3 to 5 items; the count is not Pydantic-validated
-- `recommended_specialist` — must be one of the 20 values in `app/constants.py SPECIALISTS`, enforced by the system prompt not by Pydantic
+- `recommended_specialist` — must be one of the 19 values in `app/constants.py SPECIALISTS`, enforced by the system prompt not by Pydantic
 
 ---
 
@@ -61,14 +61,14 @@ If the LLM returns malformed JSON or a schema mismatch, the LLM service retries 
 Returned to clients from `POST /recommend`. Extends the LLM payload with usage metadata.
 
 ```python
-class RateLimitInfo(BaseModel):
+class RateLimitQuota(BaseModel):
     limit: int | None
     remaining: int | None
     reset: str | None
 
-class RateLimits(BaseModel):
-    requests: RateLimitInfo
-    tokens: RateLimitInfo
+class RateLimitInfo(BaseModel):
+    requests: RateLimitQuota
+    tokens: RateLimitQuota
 
 class UsageInfo(BaseModel):
     model_used: str
@@ -94,7 +94,7 @@ class RecommendationResponse(BaseModel):
 
 | Field | Description |
 |-------|-------------|
-| `recommended_specialist` | Single specialist from the 20-item `SPECIALISTS` list |
+| `recommended_specialist` | Single specialist from the 19-item `SPECIALISTS` list |
 | `primary_recommendation_summary` | 2–3 sentences for the patient, not clinical language |
 | `symptom_explanation` | Why these symptoms point to this specialist |
 | `specialist_pathway` | Up to 3 alternative pathways (ordered by relevance) |
@@ -119,16 +119,16 @@ class RecommendationResponse(BaseModel):
 
 ### `SPECIALISTS`
 
-The 20 valid specialist categories. The system prompt embeds this list and instructs the LLM to pick exactly one.
+The 19 valid specialist categories. The system prompt embeds this list and instructs the LLM to pick exactly one.
 
 ```
-General Physician        Dermatologist          Cardiologist
-Neurologist              Orthopedic Surgeon     Gastroenterologist
-Pulmonologist            Endocrinologist        Psychiatrist
-Ophthalmologist          ENT Specialist         Urologist
-Gynecologist             Rheumatologist         Allergist/Immunologist
-Oncologist               Nephrologist           Infectious Disease Specialist
-Hematologist             Pediatrician
+General Physician          Cardiologist               Neurologist
+Orthopedician              Dermatologist              Nephrologist
+Diabetologist              Urologist                  Obstetrician & Gynaecologist
+General Surgeon            Gastroenterologist         Oncologist
+ENT                        Ophthalmologist            Pulmonologist
+Radiologist                Dentist                    Psychiatrist
+Rheumatologist
 ```
 
 ### `RECOMMENDATION_DISCLAIMER`

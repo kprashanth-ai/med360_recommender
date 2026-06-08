@@ -94,6 +94,7 @@ Reads environment variables via `python-dotenv`. All config is centralized here.
 - `OPENAI_API_KEY`, `OPENAI_MODEL` — primary provider
 - `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL` — fallback provider
 - `OPENROUTER_FALLBACKS` — ordered list of 11 fallback model IDs
+- `MOCK_MODE` — when `true`, bypasses all LLM calls and returns a static response
 
 See [[Configuration]] for all variables.
 

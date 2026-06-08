@@ -20,10 +20,6 @@ These should be resolved before exposing the service beyond trusted internal env
 - LLM responses are hard to test deterministically — the service layer needs to be mockable
 - **Fix:** Add tests with `unittest.mock` patching the OpenRouter client; test validation logic, fallback triggering, and error paths separately
 
-### No Mock Mode
-- Frontend developers cannot work without a real `OPENROUTER_API_KEY`
-- **Fix:** Add a `MOCK_MODE=true` env flag that returns a static example response, bypassing the LLM call entirely
-
 ### File-Based Usage Logging
 - `logs/usage.json` is local to the running process — not shared across instances or persistent across redeployments
 - **Fix:** Replace with structured logging to a database, a centralized log sink, or a cloud metrics service
@@ -72,6 +68,38 @@ Longer-term ideas, not yet scoped.
 
 ---
 
+## Planned: Training Data & Model Pipeline
+
+Full design documented in [[Training-Data-Pipeline]], [[Feedback-System]], [[MongoDB-Schema]], [[ICMR-Citation-Layer]].
+
+### Phase 1 — Data Infrastructure
+- [ ] MongoDB setup (replace file-based usage.json)
+- [ ] MedMCQA + MedQA extraction script (`scripts/extract_queries.py`)
+- [ ] Batch runner (`scripts/run_batch.py`) — feeds query bank through POST /recommend
+- [ ] ICMR STW harvester (`scripts/harvest_icmr.py`) — scrapes and downloads all ~150 PDFs
+- [ ] Specialty-level citation lookup (`data/icmr_specialist_map.json`)
+
+### Phase 2 — Feedback & Annotation
+- [ ] Annotation UI (Streamlit) — intern-facing rubric form
+- [ ] Active sampling logic — prioritize high severity, label mismatch, rare specialists
+- [ ] Comparative annotation (DPO preference pairs)
+- [ ] Inter-rater agreement tracking
+
+### Phase 3 — Model Training
+- [ ] Auto-filter pipeline (format + specialist + label match + LLM-as-judge)
+- [ ] SFT dataset export (instruction tuning JSONL)
+- [ ] DPO dataset export (preference pairs JSONL)
+- [ ] Fine-tune Llama 3.1 8B on SFT dataset
+- [ ] DPO alignment pass
+- [ ] Evaluation: MedMCQA test set + custom triage eval + human rubric + safety tests
+
+### Phase 4 — PDF Content & RAG (Long-term)
+- [ ] PDF text extraction (pdfplumber + pytesseract OCR)
+- [ ] Condition-level citation linking (Phase 2 of ICMR layer)
+- [ ] RAG system on parsed ICMR STW content
+
+---
+
 ## Completed
 
 - [x] FastAPI app with typed request/response models
@@ -83,7 +111,13 @@ Longer-term ideas, not yet scoped.
 - [x] Streamlit demo UI
 - [x] CLI demo client
 - [x] Obsidian documentation vault
+- [x] Mock mode (MOCK_MODE=true env flag)
+- [x] Benchmark evidence document with citations (docs/benchmark-evidence.md)
+- [x] Training pipeline design (docs/Training-Data-Pipeline.md)
+- [x] Feedback system design (docs/Feedback-System.md)
+- [x] MongoDB schema design (docs/MongoDB-Schema.md)
+- [x] ICMR citation layer design (docs/ICMR-Citation-Layer.md)
 
 ---
 
-*See also: [[Architecture]] | [[Development-Guide]] | [[Configuration]]*
+*See also: [[Architecture]] | [[Development-Guide]] | [[Configuration]] | [[Training-Data-Pipeline]] | [[Feedback-System]]*

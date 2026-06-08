@@ -84,21 +84,21 @@ Primary integration endpoint. Accepts patient symptoms, returns triage recommend
 
 ```json
 {
-  "recommended_specialist": "Allergist/Immunologist",
-  "primary_recommendation_summary": "Your symptoms suggest an allergic reaction that should be evaluated by a specialist.",
-  "symptom_explanation": "The rash, itching, and hives occurring after eating are classic signs that the immune system may be reacting to a food or environmental trigger.",
+  "recommended_specialist": "Dermatologist",
+  "primary_recommendation_summary": "Your symptoms suggest an allergic skin reaction that should be evaluated by a specialist.",
+  "symptom_explanation": "The rash, itching, and hives occurring after eating are common signs that the skin's immune response may be reacting to a food or environmental trigger.",
   "specialist_pathway": [
     {
-      "specialist": "Allergist/Immunologist",
-      "reason": "Best fit for evaluating allergic reactions and identifying triggers"
-    },
-    {
       "specialist": "Dermatologist",
-      "reason": "If the presentation is primarily skin-focused without systemic symptoms"
+      "reason": "Best fit for evaluating skin-based allergic reactions and identifying triggers"
     },
     {
       "specialist": "General Physician",
       "reason": "Starting point if access to a specialist is delayed"
+    },
+    {
+      "specialist": "Gastroenterologist",
+      "reason": "If symptoms suggest food intolerance with gastrointestinal involvement"
     }
   ],
   "red_flags": [
@@ -161,13 +161,13 @@ Primary integration endpoint. Accepts patient symptoms, returns triage recommend
 The `recommended_specialist` field will always be one of:
 
 ```
-General Physician        Dermatologist          Cardiologist
-Neurologist              Orthopedic Surgeon     Gastroenterologist
-Pulmonologist            Endocrinologist        Psychiatrist
-Ophthalmologist          ENT Specialist         Urologist
-Gynecologist             Rheumatologist         Allergist/Immunologist
-Oncologist               Nephrologist           Infectious Disease Specialist
-Hematologist             Pediatrician
+General Physician          Cardiologist               Neurologist
+Orthopedician              Dermatologist              Nephrologist
+Diabetologist              Urologist                  Obstetrician & Gynaecologist
+General Surgeon            Gastroenterologist         Oncologist
+ENT                        Ophthalmologist            Pulmonologist
+Radiologist                Dentist                    Psychiatrist
+Rheumatologist
 ```
 
 ---

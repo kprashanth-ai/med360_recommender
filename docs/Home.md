@@ -16,6 +16,12 @@
 | [[Configuration]] | Environment variables and deployment config |
 | [[Development-Guide]] | Local setup, running the app, demo clients |
 | [[Roadmap]] | Known gaps, planned improvements |
+| [[Training-Data-Pipeline]] | MedQA/MedMCQA → gpt-4o → fine-tune own model |
+| [[Feedback-System]] | Human annotation design, rubric, feedback loop |
+| [[MongoDB-Schema]] | All collection schemas for the training pipeline |
+| [[ICMR-Citation-Layer]] | Linking responses to ICMR STW clinical guidelines |
+| [[benchmark-evidence]] | Medical LLM benchmark citations and model scores |
+| [[decisions/000-decisions-index\|Decision Records]] | All architectural and strategic decisions with date, rationale, and consequences |
 
 ---
 
@@ -60,7 +66,7 @@ What works:
 - CORS-configurable for frontend integration
 - Local usage tracking with cost estimation
 
-What's missing: auth, tests, Docker, centralized logging, mock mode.
+What's missing: auth, tests, Docker, centralized logging.
 
 See [[Roadmap]] for details.
 
@@ -91,4 +97,4 @@ recommender/
 
 ---
 
-*Last updated: 2026-05-11*
+*Last updated: 2026-06-08*
